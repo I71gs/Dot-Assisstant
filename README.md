@@ -316,15 +316,6 @@ pytest tests/ -v
 
 ---
 
-## Roadmap
-
-- [x] Phase 1 - Modular text-based deterministic assistant
-- [ ] Phase 2 - AI integration (local LLM via Ollama / Gemma)
-- [ ] Phase 3 - GUI / system tray mode
-- [ ] Phase 4 - Plugin system
-
----
-
 ## License
 
 MIT - see [LICENSE](LICENSE).

@@ -18,6 +18,9 @@ jarvis_config.json
 todos.json
 reminders.json
 command_history.json
+data/
+logs/
+screenshots/
 
 # Audio and download binaries
 wheel_downloads/

@@ -4,10 +4,6 @@ core/parser.py — DOT Assistant Command Parser
 Converts raw user text into a structured ParsedCommand.
 This is the ONLY place where text → intent mapping lives.
 No business logic here — pure text analysis.
-
-The ParsedCommand format is the Phase 2 contract:
-    A future Gemma AI layer must produce the same ParsedCommand objects.
-    The dispatcher is agnostic to source (human text OR AI output).
 """
 
 from __future__ import annotations

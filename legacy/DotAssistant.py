@@ -53,10 +53,7 @@ DEFAULT_CONFIG = {
     'voice_enabled': True,
     'voice_input': False,
     'genz_slangs': True,
-    'dark_jokes': True,
-    'ai_enabled': False,
-    'ai_model': 'gemma3:4b',
-    'ai_timeout': 15
+    'dark_jokes': True
 }
 
 # Color codes for terminal
@@ -88,108 +85,35 @@ def print_warning(text):
     print(f"{Colors.YELLOW}⚠ {text}{Colors.ENDC}")
 
 
-def is_ollama_available():
-    """Return True when the local Ollama CLI is installed."""
-    return shutil.which("ollama") is not None
 
-
-AI_TRANSLATION_PROMPT = """You are DOT Assistant's command normalizer.
-Translate the user's request into a single exact DOT command phrase that the assistant can execute.
-Do not add any explanation or commentary. Return only one line with the normalized command.
-If the request cannot safely be mapped to a known DOT command, reply with UNKNOWN.
-
-Valid command forms:
-  help
-  exit
-  open app <app>
-  open website <url>
-  open url <url>
-  search <query>
-  weather <city>
-  define <word>
-  trivia
-  joke
-  youtube <query>
-  play music
-  play video
-  play radio
-  list files
-  create file <filename>
-  delete file <filename>
-  read file <filename>
-  update file <filename>
-  add todo <task>
-  note <text>
-  show tasks
-  list reminders
-  set reminder in <delay> minutes
-  set reminder in <delay> hours
-  lock computer
-  shutdown
-  restart
-  cancel shutdown
-  system info
-  network info
-  processes
-  screenshot
-  settings menu
-  settings
-  toggle voice output
-  toggle voice input
-  toggle genz
-  toggle dark jokes
-
-User request: {query}
-Normalized command:
-"""
-
-
-def translate_query_via_ai(query):
-    config = load_config()
-    if not config.get('ai_enabled', False):
-        return None
-    if not is_ollama_available():
-        return None
-
-    model = config.get('ai_model', 'gemma3:4b')
-    timeout = int(config.get('ai_timeout', 15))
-    prompt = AI_TRANSLATION_PROMPT.format(query=query.strip())
-
-    try:
-        result = subprocess.run(
-            ["ollama", "run", model, prompt],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        print_warning("AI translation timed out.")
-        return None
-    except Exception:
-        return None
-
-    if result.returncode != 0:
-        return None
-
-    output_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    if not output_lines:
-        return None
-
-    command = output_lines[0].strip().strip('"').strip("'")
-    if command.upper() in {"UNKNOWN", "NONE", "NO_ACTION"}:
-        return None
-
-    return command
-
-
-def speak(audio):
-    """Speak the given audio text if voice is enabled"""
+def speak(audio, thinking_delay=0.0, thinking_phrase=None):
+    """Speak the given audio text if voice is enabled with optional thinking-style pacing."""
     config = load_config()
     if not config.get('voice_enabled', True):
         return
+
     try:
+        answer = input("Read this aloud? [y/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return
+
+    if answer not in {"y", "yes"}:
+        return
+
+    try:
+        if thinking_delay:
+            if thinking_phrase:
+                engine.say(thinking_phrase)
+                engine.runAndWait()
+            time.sleep(thinking_delay)
         engine.say(audio)
         engine.runAndWait()
+    except KeyboardInterrupt:
+        try:
+            engine.stop()
+        except Exception:
+            pass
+        print_warning("Speech interrupted.")
     except Exception as e:
         print_error(f"Speech error: {e}")
 
@@ -205,7 +129,7 @@ def wish_me():
         greeting = "Good Evening! "
     
     greeting += "I'm Dot, your voice assistant. How can I help?"
-    speak(greeting)
+    speak(greeting, thinking_delay=0.4, thinking_phrase="Sure, one second.")
     print_info(greeting)
 
 
@@ -277,7 +201,6 @@ def handle_conversation(query):
             'no cap': "For real, I never cap. 100% facts.",
             'bet': "Bet! Let's get it.",
             'sheesh': "Sheesh! That's absolute fire.",
-            'skibidi': "Skibidi toilet has ruined our brainrot levels. Real talk.",
             'rizz': "My rizz is standard operational AI code. Infinite rizz, basically.",
             'sigma': "You are looking at a certified, pure code sigma. Peak performance.",
             'gyatt': "Gyatt! Let's keep it clean here.",
@@ -350,7 +273,7 @@ def set_reminder(hours=1, minutes=0):
         
         time_display = reminder_time.strftime("%H:%M")
         print_success(f"Reminder set for {time_display}")
-        speak(f"Reminder set for {hours} hour from now")
+        speak(f"Reminder set for {hours} hour from now", thinking_delay=0.3)
     except Exception as e:
         print_error(f"Reminder error: {e}")
 
@@ -359,7 +282,7 @@ def set_alarm(hours=0, minutes=5):
     try:
         alarm_time = datetime.datetime.now() + datetime.timedelta(hours=hours, minutes=minutes)
         print_header(f"ALARM SET FOR {alarm_time.strftime('%H:%M:%S')}")
-        speak(f"Alarm set for {alarm_time.strftime('%H:%M')}")
+        speak(f"Alarm set for {alarm_time.strftime('%H:%M')}", thinking_delay=0.3)
         
         def alarm_thread():
             while True:
@@ -367,7 +290,7 @@ def set_alarm(hours=0, minutes=5):
                 if current_time >= alarm_time:
                     print_error("⏰ ALARM! ALARM! ALARM!")
                     for _ in range(5):
-                        speak("Alarm!")
+                        speak("Alarm!", thinking_delay=0.2)
                     break
                 time.sleep(1)
         
@@ -410,10 +333,10 @@ def get_network_info():
         try:
             requests.get('http://google.com', timeout=2)
             print_success("Internet: Connected")
-            speak("Internet is connected")
+            speak("Internet is connected", thinking_delay=0.25)
         except:
             print_error("Internet: Not connected")
-            speak("Internet is not connected")
+            speak("Internet is not connected", thinking_delay=0.25)
             
     except Exception as e:
         print_error(f"Network error: {e}")
@@ -435,7 +358,7 @@ def list_running_processes():
         for i, (name, mem) in enumerate(processes[:10], 1):
             print(f"  {i}. {name:<30} - {mem:.2f}% RAM")
         
-        speak(f"Found {len(processes)} running processes")
+        speak(f"Found {len(processes)} running processes", thinking_delay=0.3)
     except Exception as e:
         print_error(f"Process error: {e}")
 
@@ -447,7 +370,7 @@ def take_screenshot():
         screenshot = ImageGrab.grab()
         screenshot.save(filename)
         print_success(f"Screenshot saved: {filename}")
-        speak("Screenshot taken")
+        speak("Screenshot taken", thinking_delay=0.3)
     except Exception as e:
         print_error(f"Screenshot error: {e}")
 
@@ -455,7 +378,7 @@ def shutdown_pc():
     """Shutdown the computer"""
     try:
         print_warning("Shutting down computer in 10 seconds...")
-        speak("Computer will shutdown in 10 seconds")
+        speak("Computer will shutdown in 10 seconds", thinking_delay=0.3)
         os.system("shutdown /s /t 10")
     except Exception as e:
         print_error(f"Shutdown error: {e}")
@@ -464,7 +387,7 @@ def restart_pc():
     """Restart the computer"""
     try:
         print_warning("Restarting computer in 10 seconds...")
-        speak("Computer will restart in 10 seconds")
+        speak("Computer will restart in 10 seconds", thinking_delay=0.3)
         os.system("shutdown /r /t 10")
     except Exception as e:
         print_error(f"Restart error: {e}")
@@ -474,7 +397,7 @@ def lock_computer():
     try:
         os.system("rundll32.exe user32.dll,LockWorkStation")
         print_success("Computer locked")
-        speak("Computer locked")
+        speak("Computer locked", thinking_delay=0.2)
     except Exception as e:
         print_error(f"Lock error: {e}")
 
@@ -483,7 +406,7 @@ def cancel_shutdown():
     try:
         os.system("shutdown /a")
         print_success("Shutdown cancelled")
-        speak("Shutdown cancelled")
+        speak("Shutdown cancelled", thinking_delay=0.2)
     except Exception as e:
         print_warning("No shutdown scheduled")
 
@@ -505,7 +428,7 @@ def list_files(path="."):
         if len(files) > 20:
             print(f"  ... and {len(files) - 20} more files")
         
-        speak(f"Found {len(files)} items in directory")
+        speak(f"Found {len(files)} items in directory", thinking_delay=0.3)
     except Exception as e:
         print_error(f"Error listing files: {e}")
 
@@ -527,7 +450,7 @@ def get_recent_files(directory=".", count=10):
             time_str = datetime.datetime.fromtimestamp(mod_time).strftime("%Y-%m-%d %H:%M")
             print(f"  {i}. {filename:<40} - {time_str}")
         
-        speak(f"Found {len(files)} recent files")
+        speak(f"Found {len(files)} recent files", thinking_delay=0.3)
     except Exception as e:
         print_error(f"Recent files error: {e}")
 
@@ -537,7 +460,7 @@ def create_file(filename, content=""):
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(content)
         print_success(f"File created: {filename}")
-        speak(f"File {filename} created")
+        speak(f"File {filename} created", thinking_delay=0.25)
     except Exception as e:
         print_error(f"Create file error: {e}")
 
@@ -547,7 +470,7 @@ def delete_file(filename):
         if os.path.exists(filename):
             os.remove(filename)
             print_success(f"File deleted: {filename}")
-            speak(f"File {filename} deleted")
+            speak(f"File {filename} deleted", thinking_delay=0.25)
         else:
             print_error("File not found")
     except Exception as e:
@@ -559,7 +482,7 @@ def navigate_directory(path):
         if os.path.isdir(path):
             os.chdir(path)
             print_success(f"Navigated to: {os.getcwd()}")
-            speak(f"Navigated to {path}")
+            speak(f"Navigated to {path}", thinking_delay=0.25)
         else:
             print_error(f"Directory not found: {path}")
     except Exception as e:
@@ -573,7 +496,7 @@ def play_spotify():
         print_header("SPOTIFY MUSIC PLAYER")
         # Try launching Spotify URI protocol first
         print_info("Launching Spotify...")
-        speak("Opening Spotify")
+        speak("Opening Spotify", thinking_delay=0.4, thinking_phrase="One moment.")
         webbrowser.open("spotify:")
     except Exception as e:
         print_error(f"Could not open Spotify protocol: {e}")
@@ -604,7 +527,7 @@ def play_music():
         
         song = random.choice(songs)
         print_success(f"Now playing: {song}")
-        speak(f"Playing {song}")
+        speak(f"Playing {song}", thinking_delay=0.3)
         os.startfile(os.path.join(music_dir, song))
     except Exception as e:
         print_error(f"Music error: {e}")
@@ -622,7 +545,7 @@ def play_video(video_path=None):
         if video_path and os.path.exists(video_path):
             os.startfile(video_path)
             print_success(f"Playing video: {os.path.basename(video_path)}")
-            speak("Playing video")
+            speak("Playing video", thinking_delay=0.3)
         else:
             print_error("No video found")
     except Exception as e:
@@ -653,7 +576,7 @@ def search_youtube(query):
         url = f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}"
         webbrowser.open(url)
         print_success(f"Searching YouTube for: {query}")
-        speak(f"Searching YouTube for {query}")
+        speak(f"Searching YouTube for {query}", thinking_delay=0.6, thinking_phrase="Let me look that up.")
     except Exception as e:
         print_error(f"YouTube search error: {e}")
 
@@ -670,7 +593,7 @@ def read_file_aloud(filepath):
         print_header(f"READING: {os.path.basename(filepath)}")
         print(content[:200] + "..." if len(content) > 200 else content)
         
-        speak(content)
+        speak(content, thinking_delay=0.4, thinking_phrase="I’m pulling that together.")
     except Exception as e:
         print_error(f"Read file error: {e}")
 
@@ -681,7 +604,7 @@ def play_radio():
     try:
         station_url = "http://stream.antena3.ro:8000"
         print_info(f"Opening radio stream...")
-        speak("Opening radio stream")
+        speak("Opening radio stream", thinking_delay=0.4, thinking_phrase="One moment.")
         os.startfile(station_url)
     except Exception as e:
         print_error(f"Radio error: {e}")
@@ -694,7 +617,7 @@ def search_web(query):
         url = f"https://www.google.com/search?q={query}"
         webbrowser.open(url)
         print_success(f"Searching for: {query}")
-        speak(f"Searching for {query} on Google")
+        speak(f"Searching for {query} on Google", thinking_delay=0.7, thinking_phrase="Let me check that.")
     except Exception as e:
         print_error(f"Search error: {e}")
 
@@ -705,7 +628,7 @@ def open_website(url):
             url = 'https://' + url
         webbrowser.open(url)
         print_success(f"Opening {url}")
-        speak(f"Opening {url}")
+        speak(f"Opening {url}", thinking_delay=0.3)
     except Exception as e:
         print_error(f"Could not open website: {e}")
 
@@ -725,7 +648,7 @@ def open_application(app_name):
         if app_name.lower() in app_paths:
             os.startfile(app_paths[app_name.lower()])
             print_success(f"Opening {app_name}")
-            speak(f"Opening {app_name}")
+            speak(f"Opening {app_name}", thinking_delay=0.3)
         else:
             print_error(f"Application '{app_name}' not found in shortcuts")
     except Exception as e:
@@ -789,7 +712,7 @@ def get_dictionary_definition(word):
                 if definitions:
                     definition = definitions[0].get('definition', 'No definition found')
                     print_info(f"Definition: {definition}")
-                    speak(f"{word} means {definition}")
+                    speak(f"{word} means {definition}", thinking_delay=0.25)
             else:
                 print_error("No definitions found")
         else:
@@ -814,7 +737,7 @@ def tell_trivia():
     
     fact = random.choice(trivia_facts)
     print_success(fact)
-    speak(fact)
+    speak(fact, thinking_delay=0.35)
 
 def convert_units(value, from_unit, to_unit):
     """Convert between units"""
@@ -874,7 +797,7 @@ def add_todo(task):
             json.dump(todos, f, indent=2)
         
         print_success(f"Task added: {task}")
-        speak(f"Task {task} added to your TODO list")
+        speak(f"Task {task} added to your TODO list", thinking_delay=0.2)
     except Exception as e:
         print_error(f"TODO error: {e}")
 
@@ -903,7 +826,7 @@ def list_todos():
             for i, todo in enumerate(completed, 1):
                 print(f"  {i}. ☑ {todo['task']}")
         
-        speak(f"You have {len(pending)} pending tasks")
+        speak(f"You have {len(pending)} pending tasks", thinking_delay=0.2)
     except Exception as e:
         print_error(f"TODO error: {e}")
 
@@ -912,7 +835,7 @@ def take_note():
     try:
         print_header("VOICE NOTE")
         print_info("Say your note (you will have 10 seconds)...")
-        speak("Say your note now")
+        speak("Say your note now", thinking_delay=0.2)
         
         r = sr.Recognizer()
         with sr.Microphone() as source:
@@ -927,7 +850,7 @@ def take_note():
             f.write(f"[{timestamp}] {note}\n")
         
         print_success(f"Note saved: {note}")
-        speak("Note saved successfully")
+        speak("Note saved successfully", thinking_delay=0.2)
     except Exception as e:
         print_error(f"Note error: {e}")
 
@@ -957,7 +880,7 @@ def send_email(to_email, subject, body):
         server.quit()
         
         print_success(f"Email sent to {to_email}")
-        speak("Email sent successfully")
+        speak("Email sent successfully", thinking_delay=0.2)
     except Exception as e:
         print_error(f"Email error: {e}")
 
@@ -992,7 +915,7 @@ def tell_joke():
         
     joke = random.choice(jokes)
     print_success(joke)
-    speak(joke)
+    speak(joke, thinking_delay=1.5, thinking_phrase="Hmm, let me think.")
 
 # ==================== CONFIGURATION ====================
 
@@ -1110,7 +1033,7 @@ def set_language(language='en-in'):
     config['language'] = language
     save_config(config)
     print_success(f"Language set to: {language}")
-    speak("Language updated")
+    speak("Language updated", thinking_delay=0.2)
 
 def set_wake_word(word='dot'):
     """Set custom wake word"""
@@ -1118,7 +1041,7 @@ def set_wake_word(word='dot'):
     config['wake_word'] = word.lower()
     save_config(config)
     print_success(f"Wake word set to: {word}")
-    speak(f"Wake word set to {word}")
+    speak(f"Wake word set to {word}", thinking_delay=0.2)
 
 def voice_profiles():
     """Show available voice profiles"""
@@ -1133,7 +1056,7 @@ def run_system_command(command):
         result = subprocess.run(command, shell=True, capture_output=True, text=True)
         if result.stdout:
             print_info(result.stdout)
-            speak("Command executed")
+            speak("Command executed", thinking_delay=0.2)
         if result.stderr:
             print_error(result.stderr)
     except Exception as e:
@@ -1253,11 +1176,7 @@ if __name__ == "__main__":
             if handle_conversation(query):
                 continue
 
-            ai_command = translate_query_via_ai(query)
-            if ai_command:
-                print_info(f"AI translated to: {ai_command}")
-                query = ai_command.lower()
-            
+
             # TIME & REMINDERS
             if 'time' in query:
                 get_time()
@@ -1363,7 +1282,7 @@ if __name__ == "__main__":
                 save_config(config)
                 status = "enabled" if config['voice_input'] else "disabled (text mode)"
                 print_success(f"Voice input is now {status}.")
-                speak(f"Voice input is now {status}.")
+                speak(f"Voice input is now {status}.", thinking_delay=0.2)
             elif 'toggle voice output' in query or 'toggle voice' in query or 'voice output' in query:
                 config = load_config()
                 config['voice_enabled'] = not config.get('voice_enabled', True)
@@ -1371,21 +1290,21 @@ if __name__ == "__main__":
                 status = "enabled" if config['voice_enabled'] else "disabled"
                 print_success(f"Voice output is now {status}.")
                 if config['voice_enabled']:
-                    speak("Voice output is now enabled.")
+                    speak("Voice output is now enabled.", thinking_delay=0.2)
             elif 'toggle genz' in query or 'genz slang' in query:
                 config = load_config()
                 config['genz_slangs'] = not config.get('genz_slangs', True)
                 save_config(config)
                 status = "enabled" if config['genz_slangs'] else "disabled"
                 print_success(f"Gen Z slangs matching is now {status}.")
-                speak(f"Gen Z slang is now {status}.")
+                speak(f"Gen Z slang is now {status}.", thinking_delay=0.2)
             elif 'toggle dark jokes' in query or 'dark jokes' in query:
                 config = load_config()
                 config['dark_jokes'] = not config.get('dark_jokes', True)
                 save_config(config)
                 status = "enabled" if config['dark_jokes'] else "disabled"
                 print_success(f"Dark jokes are now {status}.")
-                speak(f"Dark jokes are now {status}.")
+                speak(f"Dark jokes are now {status}.", thinking_delay=0.2)
             
             # ENTERTAINMENT
             elif 'joke' in query:
@@ -1402,7 +1321,7 @@ if __name__ == "__main__":
                 break
             else:
                 print_warning("Command not recognized. Say 'help' for available commands.")
-                speak("I didn't understand that. Please try again or say help for available commands.")
+                speak("I didn't understand that. Please try again or say help for available commands.", thinking_delay=0.3)
     
     except KeyboardInterrupt:
         print_header("DOT ASSISTANT SHUTTING DOWN")

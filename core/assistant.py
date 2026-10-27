@@ -5,7 +5,9 @@ core/assistant.py — DOT Assistant Orchestrator
 from __future__ import annotations
 
 import datetime
+import re
 import sys
+import time
 from typing import Optional
 
 from rich.console import Console
@@ -142,12 +144,16 @@ class Assistant:
                 break
 
             if result:
-                self._print_result(result)
-                self._speak(result)
+                naturalized = self._naturalize_response(result)
+                self._print_result(naturalized)
+                self._speak(naturalized)
 
     def handle_input(self, text: str) -> str:
-        from modules.productivity import save_command_history
-        save_command_history(text)
+        try:
+            from modules.productivity import save_command_history
+            save_command_history(text)
+        except Exception:
+            pass  # history is best-effort; never crash on this
 
         log.info("input: %s", text)
         parsed = self.parser.parse(text)
@@ -180,13 +186,56 @@ class Assistant:
             greeting = "Good afternoon"
         else:
             greeting = "Good evening"
-        msg = f"{greeting}! I'm {self.name}, your desktop assistant. How can I help?"
+        msg = f"{greeting}! I'm {self.name}. What can I help you with today?"
         console.print(f"[dim]{msg}[/dim]\n")
         self._speak(msg)
 
     def _prompt(self) -> str:
         console.print(f"[bold bright_blue]{self.name}[/] [bold white]>[/] ", end="")
         return input()
+
+    def _naturalize_response(self, result: str) -> str:
+        if not isinstance(result, str):
+            return result
+
+        text = result.strip()
+        if not text:
+            return text
+
+        text = re.sub(r"^✓\s*", "", text)
+        text = re.sub(r"^✗\s*", "", text)
+        text = re.sub(r"^⚠\s*", "", text)
+
+        patterns = [
+            (r"^Found (\d+) (.+)$", lambda m: f"I found {m.group(1)} {m.group(2)}."),
+            (r"^You have (\d+) pending tasks$", lambda m: f"You currently have {m.group(1)} pending tasks."),
+            (r"^Task (.+) added to your TODO list$", lambda m: f"I've added {m.group(1)} to your to-do list."),
+            (r"^Opening (.+)$", lambda m: f"Opening {m.group(1)} now."),
+            (r"^Playing (.+)$", lambda m: f"Playing {m.group(1)} now."),
+            (r"^Searching for (.+) on Google$", lambda m: f"I'm looking up {m.group(1)} on Google."),
+            (r"^Searching YouTube for (.+)$", lambda m: f"I'm searching YouTube for {m.group(1)}."),
+            (r"^Navigated to (.+)$", lambda m: f"I've taken you to {m.group(1)}."),
+            (r"^File (.+) created$", lambda m: f"I created {m.group(1)}."),
+            (r"^File (.+) deleted$", lambda m: f"I deleted {m.group(1)}."),
+            (r"^Reminder set for (.+)$", lambda m: f"I've set a reminder for {m.group(1)}."),
+            (r"^Alarm set for (.+)$", lambda m: f"I've set an alarm for {m.group(1)}."),
+            (r"^Command executed$", lambda _: "Done."),
+            (r"^I am Dot, your voice assistant\.$", lambda _: "I'm Dot, your voice assistant."),
+            (r"^I am Dot, your voice assistant\. I can help with tasks, information, and everyday conversation\.$", lambda _: "I'm Dot, your voice assistant, and I can help with tasks, information, and everyday conversation."),
+        ]
+
+        for pattern, formatter in patterns:
+            match = re.match(pattern, text, re.IGNORECASE)
+            if match:
+                return formatter(match)
+
+        if text.lower().startswith("not recognized"):
+            return "I didn't catch that. Could you try again?"
+        if text.lower().startswith("error:"):
+            return f"Sorry, {text[6:].strip()}"
+        if text.lower().startswith("i am"):
+            return text.replace("I am", "I'm", 1)
+        return text
 
     def _print_result(self, result: str) -> None:
         if result.startswith("✓"):
@@ -201,10 +250,20 @@ class Assistant:
     def _speak(self, text: str) -> None:
         if not self._tts_enabled or not self._tts_engine:
             return
+
+        try:
+            answer = input("Read this aloud? [y/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return
+
+        if answer not in {"y", "yes"}:
+            return
+
         plain = text
         for tag in ["[bold green]", "[bold red]", "[bold yellow]", "[/]"]:
             plain = plain.replace(tag, "")
         try:
+            time.sleep(0.6)
             self._tts_engine.say(plain[:300])
             self._tts_engine.runAndWait()
         except Exception as exc:
@@ -339,19 +398,19 @@ class Assistant:
         return f"✓ Dark jokes {'enabled' if s['dark_jokes'] else 'disabled'}."
 
     def _cmd_greet(self, **_) -> str:
-        return f"Hello! I'm {self.name}. How can I help you today?"
+        return f"Hi! I'm {self.name}. What can I help you with today?"
 
     def _cmd_how_are_you(self, **_) -> str:
-        return "I'm running smoothly. All systems nominal. Ready to help!"
+        return "I'm doing well, thanks. I'm ready to help with whatever you need."
 
     def _cmd_who_are_you(self, **_) -> str:
         return (
-            f"I'm {self.name}, your text-based desktop assistant. "
+            f"I'm {self.name}, your desktop assistant. "
             "I can help with files, apps, system info, productivity, browsing, and more."
         )
 
     def _cmd_thank_you(self, **_) -> str:
-        return "You're welcome. Always happy to help!"
+        return "You're very welcome. Happy to help."
 
     def _cmd_capabilities(self, **_) -> str:
         return self._cmd_help()

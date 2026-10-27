@@ -3,7 +3,7 @@ core/permissions.py — DOT Assistant Permission System
 
 Every command carries a PermissionLevel.
 The dispatcher uses require_confirmation() before executing CONFIRM/DANGEROUS commands.
-This system cannot be bypassed — not even by a future AI layer.
+This system cannot be bypassed.
 """
 
 from __future__ import annotations

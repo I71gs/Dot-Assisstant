@@ -1,12 +1,12 @@
 {
   "language": "en-in",
   "wake_word": "dot",
-  "music_dir": "D:\\Music",
+  "music_dir": "~/Music",
+  "video_dir": "~/Videos",
   "weather_api_key": "YOUR_OPENWEATHERMAP_API_KEY",
-  "email_address": "your_email@gmail.com",
-  "email_password": "your_app_password",
   "timezone": "UTC",
-  "ai_enabled": false,
-  "ai_model": "gemma3:4b",
-  "ai_timeout": 15
+  "tts_enabled": false,
+  "genz_slangs": true,
+  "dark_jokes": true,
+  "max_history": 200
 }

@@ -36,12 +36,6 @@ def google_search(query: str, **_) -> str:
     return f"✓ Searching Google for: {query}"
 
 
-def youtube_search(query: str, **_) -> str:
-    url = f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}"
-    webbrowser.open(url)
-    return f"✓ Searching YouTube for: {query}"
-
-
 def open_website(url: str, **_) -> str:
     url_lower = url.lower().strip().rstrip("/")
     if url_lower in SHORTCUTS:
@@ -61,9 +55,6 @@ def register_commands(registry: CommandRegistry, scheduler=None) -> None:
     registry.register_all([
         make_command("google_search", google_search, "Search Google",
                      aliases=["search", "google", "look up", "find"],
-                     args_help="<query>", category="Browser"),
-        make_command("youtube_search", youtube_search, "Search YouTube",
-                     aliases=["youtube search"],
                      args_help="<query>", category="Browser"),
         make_command("open_website", open_website, "Open a website or URL",
                      aliases=["open website", "open site", "visit", "go to"],
